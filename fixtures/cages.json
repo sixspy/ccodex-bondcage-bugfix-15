@@ -1,0 +1,38 @@
+[
+  {
+    "cage_code": "CG-P-EAST-001",
+    "party_key": "P-EAST",
+    "contract_no": "HT-2026-1101",
+    "amount": 120000,
+    "available": 120000,
+    "generation": 1,
+    "status": "已冻结",
+    "beneficiary": "市交投项目办",
+    "created_at": "2026-11-03T11:00:00",
+    "frozen_at": "2026-11-03T11:00:00"
+  },
+  {
+    "cage_code": "CG-P-NORTH-001",
+    "party_key": "P-NORTH",
+    "contract_no": "HT-2026-1108",
+    "amount": 80000,
+    "available": 80000,
+    "generation": 1,
+    "status": "已冻结",
+    "beneficiary": "园区管委会",
+    "created_at": "2026-11-04T14:20:00",
+    "frozen_at": "2026-11-04T14:20:00"
+  },
+  {
+    "cage_code": "CG-P-SOUTH-001",
+    "party_key": "P-SOUTH",
+    "contract_no": "HT-2026-1115",
+    "amount": 45000,
+    "available": 45000,
+    "generation": 1,
+    "status": "已冻结",
+    "beneficiary": "港务仓储中心",
+    "created_at": "2026-11-05T09:30:00",
+    "frozen_at": "2026-11-05T09:30:00"
+  }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "party_key": "P-EAST",
+    "party_name": "东海工程有限公司",
+    "balance": 500000,
+    "frozen": 120000,
+    "status": "正常",
+    "created_at": "2026-11-01T09:00:00"
+  },
+  {
+    "party_key": "P-NORTH",
+    "party_name": "北岸建设集团",
+    "balance": 280000,
+    "frozen": 80000,
+    "status": "正常",
+    "created_at": "2026-11-01T09:05:00"
+  },
+  {
+    "party_key": "P-WEST",
+    "party_name": "西岭供应链",
+    "balance": 150000,
+    "frozen": 0,
+    "status": "正常",
+    "created_at": "2026-11-01T09:10:00"
+  },
+  {
+    "party_key": "P-SOUTH",
+    "party_name": "南港贸易",
+    "balance": 90000,
+    "frozen": 45000,
+    "status": "正常",
+    "created_at": "2026-11-02T10:00:00"
+  }
+]
