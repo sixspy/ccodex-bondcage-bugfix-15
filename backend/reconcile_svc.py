@@ -1,10 +1,15 @@
-"""对账互证：笼面可用 + 已拨付 + 已罚没 须等于笼面金额（同代口径）。"""
+"""对账互证：笼面可用 + 已拨付 + 已罚没 须等于笼面金额（同代口径）。
+
+甲路径读侧投影：同一分位口径零容差（仅容忍浮点 epsilon），
+存量分位漂移必须检出并熄灯，禁止容差吞差充绿。
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user
 from db import connect
+from money import EPSILON, is_fen_aligned
 
 router = APIRouter(tags=["reconcile"])
 
@@ -14,19 +19,28 @@ def _reconcile_cage(conn, cage) -> dict:
     gen = int(cage["generation"])
     amount = float(cage["amount"])
     available = float(cage["available"])
-    released = conn.execute(
-        """SELECT COALESCE(SUM(amount),0) s FROM releases
-           WHERE cage_id=? AND status='已拨付' AND cage_generation=?""",
-        (cage_id, gen),
-    ).fetchone()["s"]
-    forfeited = conn.execute(
-        """SELECT COALESCE(SUM(amount),0) s FROM forfeits
-           WHERE cage_id=? AND status='已罚没' AND cage_generation=?""",
-        (cage_id, gen),
-    ).fetchone()["s"]
-    accounted = round(float(available) + float(released) + float(forfeited), 6)
-    # BUGFIX-15 埋雷：分位漂移一厘仍报平衡
-    ok = abs(accounted - amount) < 0.02
+    released = float(
+        conn.execute(
+            """SELECT COALESCE(SUM(amount),0) s FROM releases
+               WHERE cage_id=? AND status='已拨付' AND cage_generation=?""",
+            (cage_id, gen),
+        ).fetchone()["s"]
+    )
+    forfeited = float(
+        conn.execute(
+            """SELECT COALESCE(SUM(amount),0) s FROM forfeits
+               WHERE cage_id=? AND status='已罚没' AND cage_generation=?""",
+            (cage_id, gen),
+        ).fetchone()["s"]
+    )
+    accounted = available + released + forfeited
+    # 分位对齐检出：任一分量带亚分漂移即不齐
+    aligned = all(
+        is_fen_aligned(v) for v in (amount, available, released, forfeited)
+    )
+    # 零容差：缺口只允许浮点 epsilon，差一厘即熄灯
+    exact = abs(accounted - amount) < EPSILON
+    ok = aligned and exact
     # 账户侧：该当事人冻结额应覆盖所有仍冻结/核验中的笼可用
     party = cage["party_key"]
     acct = conn.execute(
@@ -47,17 +61,18 @@ def _reconcile_cage(conn, cage) -> dict:
         "status": cage["status"],
         "amount": amount,
         "available": available,
-        "released": float(released),
-        "forfeited": float(forfeited),
-        "accounted": accounted,
+        "released": released,
+        "forfeited": forfeited,
+        "accounted": round(accounted, 6),
         "balanced": ok,
+        "fen_aligned": aligned,
         "gap": round(amount - accounted, 6),
         "account_balance": float(acct["balance"]) if acct else None,
         "account_frozen": float(acct["frozen"]) if acct else None,
         "live_cage_available": float(live_frozen),
         "proof": {
-            "formula": "available + released + forfeited == amount（同笼代）",
-            "left": accounted,
+            "formula": "available + released + forfeited == amount（同笼代，分位零容差）",
+            "left": round(accounted, 6),
             "right": amount,
         },
     }
@@ -128,9 +143,10 @@ def party_proof(party_key: str, authorization: AuthHeader = None):
             "live_cage_available": live_f,
             "released_total": float(released),
             "forfeited_total": float(forfeited),
-            "frozen_matches_live": abs(frozen - live_f) < 1e-6,
+            "frozen_matches_live": abs(frozen - live_f) < EPSILON,
+            "fen_aligned": is_fen_aligned(frozen) and is_fen_aligned(live_f),
             "proof": {
-                "formula": "account.frozen == sum(live cage available)",
+                "formula": "account.frozen == sum(live cage available)（分位零容差）",
                 "left": frozen,
                 "right": live_f,
             },

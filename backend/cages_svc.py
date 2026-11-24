@@ -1,4 +1,4 @@
-"""入笼冻结：可用保证金划入笼内，写笼代。"""
+"""入笼冻结：可用保证金划入笼内，写笼代。金额落库前统一到分（甲路径）。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -7,8 +7,18 @@ from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from locks import release, require_lock
 from models import CageFreezeIn
+from money import require_fen_amount, to_fen
 
 router = APIRouter(tags=["cages"])
+
+
+def _require_lock(conn, lock_key: str, user: str) -> None:
+    """抢账户锁；后到争用登记须落库（不随业务回滚）。"""
+    try:
+        require_lock(conn, lock_key, user)
+    except HTTPException:
+        conn.commit()
+        raise
 
 
 def _next_cage_code(conn, party_key: str) -> str:
@@ -64,7 +74,7 @@ def freeze_cage(body: CageFreezeIn, authorization: AuthHeader = None):
     user = require_writer(authorization)
     lock_key = f"bond:{body.party_key}"
     with connect() as conn:
-        require_lock(conn, lock_key, user)
+        _require_lock(conn, lock_key, user)
         try:
             acct = conn.execute(
                 "SELECT * FROM bond_accounts WHERE party_key=?",
@@ -74,10 +84,10 @@ def freeze_cage(body: CageFreezeIn, authorization: AuthHeader = None):
                 raise HTTPException(404, "保证金户不存在")
             if acct["status"] != "正常":
                 raise HTTPException(409, "账户状态禁止入笼")
-            # BUGFIX-15 埋雷：入笼金额不统一分位舍入
-            amount = float(body.amount)  # 保留多位小数
-            free = float(acct["balance"]) - float(acct["frozen"])
-            if amount > free + 1e-9:
+            # 甲路径：入笼金额落库前统一到分；零改拒写
+            amount = require_fen_amount(body.amount, "入笼金额")
+            free = to_fen(float(acct["balance"]) - float(acct["frozen"]))
+            if amount > free:
                 raise HTTPException(409, "可用保证金不足，无法入笼")
             code = body.cage_code or _next_cage_code(conn, body.party_key)
             dup = conn.execute(
@@ -105,8 +115,8 @@ def freeze_cage(body: CageFreezeIn, authorization: AuthHeader = None):
             )
             cage_id = cur.lastrowid
             conn.execute(
-                "UPDATE bond_accounts SET frozen = frozen + ? WHERE party_key=?",
-                (amount, body.party_key),
+                "UPDATE bond_accounts SET frozen=? WHERE party_key=?",
+                (to_fen(float(acct["frozen"]) + amount), body.party_key),
             )
             write_audit(
                 conn,
@@ -124,6 +134,9 @@ def freeze_cage(body: CageFreezeIn, authorization: AuthHeader = None):
             conn.commit()
             row = conn.execute("SELECT * FROM cages WHERE id=?", (cage_id,)).fetchone()
             return dict(row)
+        except Exception:
+            conn.rollback()  # 草稿原子回滚
+            raise
         finally:
             release(conn, lock_key, user)
             conn.commit()

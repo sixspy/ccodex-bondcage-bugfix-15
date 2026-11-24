@@ -106,8 +106,12 @@ createApp({
     );
 
     function fmt(n) {
+      // 分位口径：全站金额固定两位小数（分），与落库口径一致
       const x = Number(n || 0);
-      return x.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+      return x.toLocaleString("zh-CN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
     }
 
     function shortStatus(s) {

@@ -1,7 +1,7 @@
 export const bondsViewTemplate = `
 <section class="panel">
   <h2>保证金户</h2>
-  <p class="hint">开户入金后，可用额 = 余额 − 已冻结。入笼只动冻结，不解出系统。</p>
+  <p class="hint">开户入金后，可用额 = 余额 − 已冻结。入笼只动冻结，不解出系统。金额口径：分（2 位小数），写入即统一到分，统一到分后为零的写入拒写。</p>
   <div class="grid-2">
     <div>
       <h3>开户</h3>
@@ -16,7 +16,7 @@ export const bondsViewTemplate = `
         </div>
         <div>
           <label>开户入金</label>
-          <input type="number" v-model.number="bondForm.initial_deposit" min="0" step="1000"/>
+          <input type="number" v-model.number="bondForm.initial_deposit" min="0" step="0.01"/>
         </div>
       </div>
       <div class="actions">
@@ -30,7 +30,7 @@ export const bondsViewTemplate = `
         </div>
         <div>
           <label>金额</label>
-          <input type="number" v-model.number="depositForm.amount" min="1" step="1000"/>
+          <input type="number" v-model.number="depositForm.amount" min="0.01" step="0.01"/>
         </div>
         <div>
           <label>备注</label>

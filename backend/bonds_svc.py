@@ -1,4 +1,4 @@
-"""保证金账户：开户、入金、查询。"""
+"""保证金账户：开户、入金、查询。金额落库前统一到分（甲路径）。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -7,8 +7,18 @@ from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from locks import release, require_lock
 from models import BondOpenIn, DepositIn
+from money import require_fen_amount, to_fen
 
 router = APIRouter(tags=["bonds"])
+
+
+def _require_lock(conn, lock_key: str, user: str) -> None:
+    """抢账户锁；后到争用登记须落库（不随业务回滚）。"""
+    try:
+        require_lock(conn, lock_key, user)
+    except HTTPException:
+        conn.commit()
+        raise
 
 
 @router.get("/api/bonds")
@@ -51,7 +61,7 @@ def open_bond(body: BondOpenIn, authorization: AuthHeader = None):
     user = require_writer(authorization)
     lock_key = f"bond:{body.party_key}"
     with connect() as conn:
-        require_lock(conn, lock_key, user)
+        _require_lock(conn, lock_key, user)
         try:
             exists = conn.execute(
                 "SELECT id FROM bond_accounts WHERE party_key=?",
@@ -60,7 +70,10 @@ def open_bond(body: BondOpenIn, authorization: AuthHeader = None):
             if exists:
                 raise HTTPException(409, "当事人键已存在")
             now = now_iso()
-            bal = float(body.initial_deposit)
+            # 甲路径：开户入金落库前统一到分；零改拒写
+            bal = to_fen(body.initial_deposit)
+            if body.initial_deposit > 0 and bal <= 0:
+                raise HTTPException(400, "开户入金统一到分位后为零，零改拒写")
             conn.execute(
                 """INSERT INTO bond_accounts(party_key,party_name,balance,frozen,status,created_at)
                    VALUES (?,?,?,?,?,?)""",
@@ -85,6 +98,9 @@ def open_bond(body: BondOpenIn, authorization: AuthHeader = None):
                 (body.party_key,),
             ).fetchone()
             return dict(row)
+        except Exception:
+            conn.rollback()  # 草稿原子回滚
+            raise
         finally:
             release(conn, lock_key, user)
             conn.commit()
@@ -95,7 +111,7 @@ def deposit(body: DepositIn, authorization: AuthHeader = None):
     user = require_writer(authorization)
     lock_key = f"bond:{body.party_key}"
     with connect() as conn:
-        require_lock(conn, lock_key, user)
+        _require_lock(conn, lock_key, user)
         try:
             acct = conn.execute(
                 "SELECT * FROM bond_accounts WHERE party_key=?",
@@ -106,10 +122,11 @@ def deposit(body: DepositIn, authorization: AuthHeader = None):
             if acct["status"] != "正常":
                 raise HTTPException(409, "账户状态禁止入金")
             now = now_iso()
-            amount = float(body.amount)
+            # 甲路径：入金落库前统一到分；零改拒写
+            amount = require_fen_amount(body.amount, "入金金额")
             conn.execute(
-                "UPDATE bond_accounts SET balance = balance + ? WHERE party_key=?",
-                (amount, body.party_key),
+                "UPDATE bond_accounts SET balance=? WHERE party_key=?",
+                (to_fen(float(acct["balance"]) + amount), body.party_key),
             )
             conn.execute(
                 """INSERT INTO deposit_ledger(party_key,amount,memo,created_at,actor)
@@ -129,6 +146,9 @@ def deposit(body: DepositIn, authorization: AuthHeader = None):
                 (body.party_key,),
             ).fetchone()
             return dict(row)
+        except Exception:
+            conn.rollback()  # 草稿原子回滚
+            raise
         finally:
             release(conn, lock_key, user)
             conn.commit()

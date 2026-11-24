@@ -1,7 +1,7 @@
 export const reconcileViewTemplate = `
 <section class="panel">
   <h2>对账互证</h2>
-  <p class="hint">笼口径：可用 + 已拨付 + 已罚没 = 笼总额（同笼代）。当事人口径：账户冻结 = 活笼可用合计。</p>
+  <p class="hint">笼口径：可用 + 已拨付 + 已罚没 = 笼总额（同笼代）。当事人口径：账户冻结 = 活笼可用合计。金额口径：分（2 位小数）零容差，分位漂移即熄灯。</p>
   <div class="actions">
     <button @click="loadReconcile">刷新对账</button>
     <button class="secondary" @click="loadProof">当事人互证</button>
@@ -22,7 +22,7 @@ export const reconcileViewTemplate = `
     <thead>
       <tr>
         <th>笼</th><th>代</th><th>状态</th><th>总额</th><th>可用</th>
-        <th>拨付</th><th>罚没</th><th>合计</th><th>平衡</th><th>缺口</th>
+        <th>拨付</th><th>罚没</th><th>合计</th><th>平衡</th><th>分位齐</th><th>缺口</th>
       </tr>
     </thead>
     <tbody>
@@ -38,6 +38,9 @@ export const reconcileViewTemplate = `
         <td>
           <span class="badge" :class="i.balanced?'pass':'fail'">{{ i.balanced ? '是' : '否' }}</span>
         </td>
+        <td>
+          <span class="badge" :class="i.fen_aligned?'pass':'fail'">{{ i.fen_aligned ? '齐' : '漂移' }}</span>
+        </td>
         <td>{{ fmt(i.gap) }}</td>
       </tr>
     </tbody>
@@ -48,6 +51,7 @@ export const reconcileViewTemplate = `
 账户冻结 {{ fmt(partyProof.account.frozen) }}
 活笼可用 {{ fmt(partyProof.live_cage_available) }}
 匹配 {{ partyProof.frozen_matches_live }}
+分位齐 {{ partyProof.fen_aligned }}
 拨付合计 {{ fmt(partyProof.released_total) }}
 罚没合计 {{ fmt(partyProof.forfeited_total) }}</div>
   </div>
